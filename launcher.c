@@ -188,13 +188,6 @@ int wmain(int argc, wchar_t* argv[]) {
 	*tmp++ = L'n';
 	*tmp++ = L'i';
 
-	if (argc > 1) {
-		code = SetEnvironmentVariable(L"CHERE_INVOKING", L"1");
-		if (code == 0) {
-			ShowLastError(L"Could not set environment variable");
-		}
-	}
-
 	msystem = SetEnv(confpath);
 	if (msystem == NULL) {
 		ShowError(L"Did not find the MSYSTEM variable", confpath, 0);
@@ -206,15 +199,43 @@ int wmain(int argc, wchar_t* argv[]) {
 		ShowLastError(L"Could not set environment variable");
 	}
 
-	// can break, but hopefully won't for most use cases
+    int args_off = 1;
+    if (argc > 1) {
+        if (wcsicmp(argv[1], L"-d") == 0) {
+            if (argc < 3) {
+                ShowError(L"Directory not specified", L"-d", 0);
+                return __LINE__;
+            }
+
+            if (!SetCurrentDirectory(argv[2])) {
+                ShowError(L"Failed to enter specified directory", argv[2], 0);
+                return __LINE__;
+            }
+
+            args_off = 3;
+        }
+    }
+
+    if ((args_off > 1) || (args_off < argc)) {
+        code = SetEnvironmentVariable(L"CHERE_INVOKING", L"1");
+        if (code == 0) {
+            ShowLastError(L"Could not set environment variable");
+        }
+    }
+
 	args = GetCommandLine();
-	if (args[0] == L'"') {
-		args++;
-	}
-	args += wcslen(argv[0]);
-	if (args[0] == L'"') {
-		args++;
-	}
+    size_t args_len = wcslen(args);
+    args = malloc(args_len);
+    if (args == NULL) {
+        ShowError(L"Could not allocate memory", L"", 0);
+        return __LINE__;
+    }
+
+	args[0] = 0;
+    size_t off = 0;
+    for (int i = args_off; i < argc; i++) {
+        off = swprintf(&args[off], args_len, L" %s", argv[i]);
+    }
 
 	code = -1;
 	buf = NULL;
@@ -225,7 +246,7 @@ int wmain(int argc, wchar_t* argv[]) {
 			ShowError(L"Could not allocate memory", L"", 0);
 			return __LINE__;
 		}
-		code = swprintf(buf, buflen, L"%s\\usr\\bin\\mintty.exe -i '%s' -o 'AppLaunchCmd=%s' -o 'AppID=MSYS2.Shell.%s.%d' -o 'AppName=MSYS2 %s Shell' -t 'MSYS2 %s Shell' --store-taskbar-properties -- %s %s", msysdir, exepath, exepath, msystem, APPID_REVISION, msystem, msystem, argc == 1 ? L"-" : L"/usr/bin/sh -lc '\"$@\"' sh", args);
+        code = swprintf(buf, buflen, L"%s\\usr\\bin\\mintty.exe -i '%s' -o 'AppLaunchCmd=%s' -o 'AppID=MSYS2.Shell.%s.%d' -o 'AppName=MSYS2 %s Shell' -t 'MSYS2 %s Shell' --store-taskbar-properties -- %s %s", msysdir, exepath, exepath, msystem, APPID_REVISION, msystem, msystem, args_off >= argc ? L"-" : L"/usr/bin/sh -lc '\"$@\"' sh", args);
 		buflen *= 2;
 	}
 	if (code < 0) {
